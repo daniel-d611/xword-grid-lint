@@ -1,0 +1,12 @@
+[package]
+name = "xword-grid-lint"
+version = "0.1.0"
+edition = "2021"
+description = "Structural checker and numberer for crossword grid layouts"
+license = "MIT"
+
+[[bin]]
+name = "xword-grid-lint"
+path = "src/main.rs"
+
+[dependencies]
