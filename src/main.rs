@@ -3,7 +3,7 @@ mod grid;
 use grid::Grid;
 use std::process::ExitCode;
 
-const MIN_WORD_LENGTH: usize = 3;
+const DEFAULT_MIN_WORD_LENGTH: usize = 3;
 
 struct Report {
     width: usize,
@@ -111,7 +111,7 @@ fn json_escape(s: &str) -> String {
     out
 }
 
-fn build_report(grid: &Grid) -> Report {
+fn build_report(grid: &Grid, min_word_length: usize) -> Report {
     let entries = grid.entries();
     let mut errors = Vec::new();
 
@@ -139,18 +139,18 @@ fn build_report(grid: &Grid) -> Report {
 
     for e in &entries {
         if let Some(len) = e.across_len {
-            if len < MIN_WORD_LENGTH {
+            if len < min_word_length {
                 errors.push(format!(
                     "{}-Across is {} letters (minimum {})",
-                    e.number, len, MIN_WORD_LENGTH
+                    e.number, len, min_word_length
                 ));
             }
         }
         if let Some(len) = e.down_len {
-            if len < MIN_WORD_LENGTH {
+            if len < min_word_length {
                 errors.push(format!(
                     "{}-Down is {} letters (minimum {})",
-                    e.number, len, MIN_WORD_LENGTH
+                    e.number, len, min_word_length
                 ));
             }
         }
@@ -171,7 +171,13 @@ fn build_report(grid: &Grid) -> Report {
 fn print_help() {
     eprintln!("xword-grid-lint - check a crossword grid layout and number its entries");
     eprintln!();
-    eprintln!("usage: xword-grid-lint <grid-file> [--json]");
+    eprintln!("usage: xword-grid-lint <grid-file> [--json] [--min-word-length N]");
+    eprintln!();
+    eprintln!("  --json               emit machine-readable JSON instead of text");
+    eprintln!(
+        "  --min-word-length N  minimum entry length in letters (default {})",
+        DEFAULT_MIN_WORD_LENGTH
+    );
     eprintln!();
     eprintln!("grid file format: one line per row, '#' for a blocked square,");
     eprintln!("any other character (conventionally '.') for an open square.");
@@ -182,13 +188,32 @@ fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
     let mut json = false;
     let mut path: Option<String> = None;
+    let mut min_word_length = DEFAULT_MIN_WORD_LENGTH;
 
-    for a in &args {
-        match a.as_str() {
+    let mut i = 0;
+    while i < args.len() {
+        match args[i].as_str() {
             "--json" => json = true,
             "-h" | "--help" => {
                 print_help();
                 return ExitCode::SUCCESS;
+            }
+            "--min-word-length" => {
+                i += 1;
+                let value = match args.get(i) {
+                    Some(v) => v,
+                    None => {
+                        eprintln!("--min-word-length requires a value");
+                        return ExitCode::from(2);
+                    }
+                };
+                min_word_length = match value.parse::<usize>() {
+                    Ok(n) if n >= 1 => n,
+                    _ => {
+                        eprintln!("--min-word-length must be a positive integer, got '{}'", value);
+                        return ExitCode::from(2);
+                    }
+                };
             }
             other => {
                 if path.is_some() {
@@ -198,6 +223,7 @@ fn main() -> ExitCode {
                 path = Some(other.to_string());
             }
         }
+        i += 1;
     }
 
     let path = match path {
@@ -224,7 +250,7 @@ fn main() -> ExitCode {
         }
     };
 
-    let report = build_report(&grid);
+    let report = build_report(&grid, min_word_length);
     if json {
         println!("{}", report.to_json());
     } else {

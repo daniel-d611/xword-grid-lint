@@ -27,8 +27,12 @@ of columns.
 ## Usage
 
 ```
-xword-grid-lint <grid-file> [--json]
+xword-grid-lint <grid-file> [--json] [--min-word-length N]
 ```
+
+`--min-word-length` defaults to 3 and controls the minimum entry length
+flagged by the length check below; e.g. `--min-word-length 4` also flags
+three-letter entries.
 
 Human-readable output for a valid 5x5 grid (`examples/sample.txt`, a
 fully open grid like an NYT Mini):
@@ -75,7 +79,8 @@ so it can be used as a check in a build script.
 - 180-degree rotational symmetry of the block pattern
 - every open cell is reachable from every other open cell
 - every open cell belongs to at least one entry (across or down, length 2+)
-- every across/down entry is at least three letters long
+- every across/down entry is at least three letters long (configurable
+  with `--min-word-length`)
 
 ## What it doesn't do yet
 
