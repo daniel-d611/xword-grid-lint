@@ -8,6 +8,7 @@ pub struct Grid {
     blocked: Vec<Vec<bool>>,
 }
 
+#[derive(Debug, PartialEq)]
 pub struct Entry {
     pub number: u32,
     pub row: usize,
@@ -207,5 +208,142 @@ impl Grid {
             }
         }
         out
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn entry(number: u32, row: usize, col: usize, across: Option<usize>, down: Option<usize>) -> Entry {
+        Entry {
+            number,
+            row,
+            col,
+            across_len: across,
+            down_len: down,
+        }
+    }
+
+    #[test]
+    fn parse_rejects_empty_input() {
+        assert!(Grid::parse("").is_err());
+        assert!(Grid::parse("\n\n").is_err());
+    }
+
+    #[test]
+    fn parse_rejects_ragged_rows() {
+        let err = Grid::parse("...\n..\n...").unwrap_err();
+        assert!(err.contains("row 2"), "error should name the bad row: {}", err);
+    }
+
+    #[test]
+    fn parse_ignores_trailing_blank_lines() {
+        let grid = Grid::parse("...\n...\n...\n\n").unwrap();
+        assert_eq!((grid.width, grid.height), (3, 3));
+    }
+
+    // Mirrors the 5x5 fully-open grid documented in the README as the
+    // reference numbering example.
+    #[test]
+    fn numbering_fully_open_grid() {
+        let grid = Grid::parse(".....\n.....\n.....\n.....\n.....").unwrap();
+        let entries = grid.entries();
+        assert_eq!(
+            entries,
+            vec![
+                entry(1, 0, 0, Some(5), Some(5)),
+                entry(2, 0, 1, None, Some(5)),
+                entry(3, 0, 2, None, Some(5)),
+                entry(4, 0, 3, None, Some(5)),
+                entry(5, 0, 4, None, Some(5)),
+                entry(6, 1, 0, Some(5), None),
+                entry(7, 2, 0, Some(5), None),
+                entry(8, 3, 0, Some(5), None),
+                entry(9, 4, 0, Some(5), None),
+            ]
+        );
+    }
+
+    // A cell that starts both an across and a down entry gets exactly one
+    // number, not two.
+    #[test]
+    fn numbering_shared_start_gets_one_number() {
+        let grid = Grid::parse("..\n..").unwrap();
+        let entries = grid.entries();
+        assert_eq!(
+            entries,
+            vec![
+                entry(1, 0, 0, Some(2), Some(2)),
+                entry(2, 0, 1, None, Some(2)),
+                entry(3, 1, 0, Some(2), None),
+            ]
+        );
+    }
+
+    // A single open cell forms no entry in either direction, since a run
+    // of length 1 doesn't count as a word.
+    #[test]
+    fn numbering_single_cell_has_no_entries() {
+        let grid = Grid::parse(".").unwrap();
+        assert!(grid.entries().is_empty());
+    }
+
+    #[test]
+    fn numbering_all_blocked_grid_has_no_entries() {
+        let grid = Grid::parse("###\n###\n###").unwrap();
+        assert!(grid.entries().is_empty());
+    }
+
+    #[test]
+    fn symmetry_fully_open_grid_is_symmetric() {
+        let grid = Grid::parse(".....\n.....\n.....\n.....\n.....").unwrap();
+        assert_eq!(grid.symmetry_mismatches(), 0);
+    }
+
+    #[test]
+    fn symmetry_all_blocked_grid_is_symmetric() {
+        let grid = Grid::parse("###\n###\n###").unwrap();
+        assert_eq!(grid.symmetry_mismatches(), 0);
+    }
+
+    // A single mismatched corner produces one mismatched pair, not two,
+    // even though both cells in the pair differ from each other.
+    #[test]
+    fn symmetry_single_corner_block_counts_as_one_pair() {
+        let grid = Grid::parse("#..\n...\n...").unwrap();
+        assert_eq!(grid.symmetry_mismatches(), 1);
+    }
+
+    #[test]
+    fn symmetry_diagonal_pattern_is_symmetric() {
+        let grid = Grid::parse("#..\n...\n..#").unwrap();
+        assert_eq!(grid.symmetry_mismatches(), 0);
+    }
+
+    // In an odd-sized grid the center cell maps to itself under 180-degree
+    // rotation, so it can never be a mismatch on its own.
+    #[test]
+    fn symmetry_odd_grid_center_cell_is_self_symmetric() {
+        let grid = Grid::parse("...\n.#.\n...").unwrap();
+        assert_eq!(grid.symmetry_mismatches(), 0);
+    }
+
+    #[test]
+    fn connectivity_detects_split_grid() {
+        let grid = Grid::parse("...\n###\n...").unwrap();
+        assert!(!grid.is_connected());
+    }
+
+    #[test]
+    fn connectivity_empty_grid_is_trivially_connected() {
+        let grid = Grid::parse("###\n###\n###").unwrap();
+        assert!(grid.is_connected());
+    }
+
+    #[test]
+    fn isolated_cell_boxed_in_by_blocks() {
+        let grid = Grid::parse("###\n#.#\n###").unwrap();
+        assert_eq!(grid.isolated_cells(), vec![(1, 1)]);
     }
 }
