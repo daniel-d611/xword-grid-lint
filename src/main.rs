@@ -1,4 +1,5 @@
 mod grid;
+mod puz;
 
 use grid::Grid;
 use std::process::ExitCode;
@@ -171,17 +172,21 @@ fn build_report(grid: &Grid, min_word_length: usize) -> Report {
 fn print_help() {
     eprintln!("xword-grid-lint - check a crossword grid layout and number its entries");
     eprintln!();
-    eprintln!("usage: xword-grid-lint <grid-file> [--json] [--min-word-length N]");
+    eprintln!("usage: xword-grid-lint <grid-file> [--json] [--min-word-length N] [--write-puz <path>]");
     eprintln!();
     eprintln!("  --json               emit machine-readable JSON instead of text");
     eprintln!(
         "  --min-word-length N  minimum entry length in letters (default {})",
         DEFAULT_MIN_WORD_LENGTH
     );
+    eprintln!("  --write-puz PATH     also write the grid's block pattern as a .puz file");
     eprintln!();
     eprintln!("grid file format: one line per row, '#' for a blocked square,");
     eprintln!("any other character (conventionally '.') for an open square.");
     eprintln!("all rows must have the same number of columns.");
+    eprintln!();
+    eprintln!("if <grid-file> ends in .puz, it's read as a binary .puz file instead;");
+    eprintln!("only its block pattern is used, any solution letters are ignored.");
 }
 
 fn main() -> ExitCode {
@@ -189,6 +194,7 @@ fn main() -> ExitCode {
     let mut json = false;
     let mut path: Option<String> = None;
     let mut min_word_length = DEFAULT_MIN_WORD_LENGTH;
+    let mut write_puz_path: Option<String> = None;
 
     let mut i = 0;
     while i < args.len() {
@@ -215,6 +221,17 @@ fn main() -> ExitCode {
                     }
                 };
             }
+            "--write-puz" => {
+                i += 1;
+                let value = match args.get(i) {
+                    Some(v) => v,
+                    None => {
+                        eprintln!("--write-puz requires a path");
+                        return ExitCode::from(2);
+                    }
+                };
+                write_puz_path = Some(value.to_string());
+            }
             other => {
                 if path.is_some() {
                     eprintln!("unexpected argument: {}", other);
@@ -234,21 +251,52 @@ fn main() -> ExitCode {
         }
     };
 
-    let input = match std::fs::read_to_string(&path) {
-        Ok(s) => s,
-        Err(e) => {
-            eprintln!("error reading {}: {}", path, e);
-            return ExitCode::FAILURE;
+    let grid = if path.to_lowercase().ends_with(".puz") {
+        let bytes = match std::fs::read(&path) {
+            Ok(b) => b,
+            Err(e) => {
+                eprintln!("error reading {}: {}", path, e);
+                return ExitCode::FAILURE;
+            }
+        };
+        match puz::read(&bytes) {
+            Ok(g) => g,
+            Err(e) => {
+                eprintln!("error parsing puz file: {}", e);
+                return ExitCode::FAILURE;
+            }
+        }
+    } else {
+        let input = match std::fs::read_to_string(&path) {
+            Ok(s) => s,
+            Err(e) => {
+                eprintln!("error reading {}: {}", path, e);
+                return ExitCode::FAILURE;
+            }
+        };
+        match Grid::parse(&input) {
+            Ok(g) => g,
+            Err(e) => {
+                eprintln!("error parsing grid: {}", e);
+                return ExitCode::FAILURE;
+            }
         }
     };
 
-    let grid = match Grid::parse(&input) {
-        Ok(g) => g,
-        Err(e) => {
-            eprintln!("error parsing grid: {}", e);
-            return ExitCode::FAILURE;
+    if let Some(out_path) = &write_puz_path {
+        match puz::write(&grid) {
+            Ok(bytes) => {
+                if let Err(e) = std::fs::write(out_path, &bytes) {
+                    eprintln!("error writing {}: {}", out_path, e);
+                    return ExitCode::FAILURE;
+                }
+            }
+            Err(e) => {
+                eprintln!("error building puz file: {}", e);
+                return ExitCode::FAILURE;
+            }
         }
-    };
+    }
 
     let report = build_report(&grid, min_word_length);
     if json {

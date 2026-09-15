@@ -27,12 +27,23 @@ of columns.
 ## Usage
 
 ```
-xword-grid-lint <grid-file> [--json] [--min-word-length N]
+xword-grid-lint <grid-file> [--json] [--min-word-length N] [--write-puz <path>]
 ```
 
 `--min-word-length` defaults to 3 and controls the minimum entry length
 flagged by the length check below; e.g. `--min-word-length 4` also flags
 three-letter entries.
+
+`--write-puz` writes the grid's block pattern out as an Across Lite `.puz`
+file, so a text sketch can be opened directly in a grid editor. This tool
+doesn't track letters, so open squares are written as blank (`-`), and
+clues are placeholders like `1 Across` rather than real clue text.
+
+If `<grid-file>` itself ends in `.puz`, it's read as a binary `.puz` file
+instead of a text sketch. Only the block pattern is used; any solution
+letters already in the file are ignored, since this tool never looks at
+letters. This is mainly useful for running the symmetry/connectivity/length
+checks against a grid you already built in another editor.
 
 Human-readable output for a valid 5x5 grid (`examples/sample.txt`, a
 fully open grid like an NYT Mini):
@@ -84,8 +95,9 @@ so it can be used as a check in a build script.
 
 ## What it doesn't do yet
 
-No letter fill, no word list, no grid generation. See the issue tracker
-for what's planned.
+No letter fill, no word list, no grid generation. `.puz` support is
+structural only: block pattern in and out, never solution letters or real
+clues. See the issue tracker for what's planned.
 
 ## Building
 
