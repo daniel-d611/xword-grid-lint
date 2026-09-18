@@ -58,6 +58,13 @@ impl Grid {
         self.width * self.height - self.open_cells()
     }
 
+    // Fraction of the grid that's blocked, 0.0 to 1.0. Grids with a lot of
+    // blocks are easier to fill but read as less impressive to solvers, so
+    // published venues generally cap this rather than the raw block count.
+    pub fn block_density(&self) -> f64 {
+        self.block_cells() as f64 / (self.width * self.height) as f64
+    }
+
     // For every open cell, the length of the contiguous run of open cells
     // in its row that it belongs to (not just runs that start at that cell).
     pub fn across_run_lengths(&self) -> Vec<Vec<usize>> {
@@ -345,5 +352,23 @@ mod tests {
     fn isolated_cell_boxed_in_by_blocks() {
         let grid = Grid::parse("###\n#.#\n###").unwrap();
         assert_eq!(grid.isolated_cells(), vec![(1, 1)]);
+    }
+
+    #[test]
+    fn block_density_fully_open_grid_is_zero() {
+        let grid = Grid::parse(".....\n.....\n.....\n.....\n.....").unwrap();
+        assert_eq!(grid.block_density(), 0.0);
+    }
+
+    #[test]
+    fn block_density_all_blocked_grid_is_one() {
+        let grid = Grid::parse("###\n###\n###").unwrap();
+        assert_eq!(grid.block_density(), 1.0);
+    }
+
+    #[test]
+    fn block_density_counts_fraction_of_blocked_cells() {
+        let grid = Grid::parse("#.\n..").unwrap();
+        assert_eq!(grid.block_density(), 0.25);
     }
 }

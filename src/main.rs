@@ -5,12 +5,14 @@ use grid::Grid;
 use std::process::ExitCode;
 
 const DEFAULT_MIN_WORD_LENGTH: usize = 3;
+const DEFAULT_MAX_BLOCK_DENSITY: f64 = 0.2;
 
 struct Report {
     width: usize,
     height: usize,
     open_cells: usize,
     block_cells: usize,
+    block_density: f64,
     symmetric: bool,
     connected: bool,
     entries: Vec<grid::Entry>,
@@ -24,6 +26,7 @@ impl Report {
             "grid: {}x{} ({} open, {} blocked)\n",
             self.width, self.height, self.open_cells, self.block_cells
         ));
+        s.push_str(&format!("block density: {:.1}%\n", self.block_density * 100.0));
         s.push_str(&format!("symmetric: {}\n", if self.symmetric { "yes" } else { "no" }));
         s.push_str(&format!("connected: {}\n", if self.connected { "yes" } else { "no" }));
 
@@ -77,11 +80,12 @@ impl Report {
             .collect();
 
         format!(
-            "{{\"width\":{},\"height\":{},\"open_cells\":{},\"block_cells\":{},\"symmetric\":{},\"connected\":{},\"errors\":[{}],\"entries\":[{}]}}",
+            "{{\"width\":{},\"height\":{},\"open_cells\":{},\"block_cells\":{},\"block_density\":{},\"symmetric\":{},\"connected\":{},\"errors\":[{}],\"entries\":[{}]}}",
             self.width,
             self.height,
             self.open_cells,
             self.block_cells,
+            self.block_density,
             self.symmetric,
             self.connected,
             errors_json.join(","),
@@ -112,7 +116,7 @@ fn json_escape(s: &str) -> String {
     out
 }
 
-fn build_report(grid: &Grid, min_word_length: usize) -> Report {
+fn build_report(grid: &Grid, min_word_length: usize, max_block_density: f64) -> Report {
     let entries = grid.entries();
     let mut errors = Vec::new();
 
@@ -122,6 +126,15 @@ fn build_report(grid: &Grid, min_word_length: usize) -> Report {
             "grid is not 180-degree rotationally symmetric ({} mismatched cell pair{})",
             mismatches,
             if mismatches == 1 { "" } else { "s" }
+        ));
+    }
+
+    let block_density = grid.block_density();
+    if block_density > max_block_density {
+        errors.push(format!(
+            "block density is {:.1}% (maximum {:.1}%)",
+            block_density * 100.0,
+            max_block_density * 100.0
         ));
     }
 
@@ -162,6 +175,7 @@ fn build_report(grid: &Grid, min_word_length: usize) -> Report {
         height: grid.height,
         open_cells: grid.open_cells(),
         block_cells: grid.block_cells(),
+        block_density,
         symmetric: mismatches == 0,
         connected,
         entries,
@@ -172,14 +186,19 @@ fn build_report(grid: &Grid, min_word_length: usize) -> Report {
 fn print_help() {
     eprintln!("xword-grid-lint - check a crossword grid layout and number its entries");
     eprintln!();
-    eprintln!("usage: xword-grid-lint <grid-file> [--json] [--min-word-length N] [--write-puz <path>]");
+    eprintln!("usage: xword-grid-lint <grid-file> [--json] [--min-word-length N]");
+    eprintln!("                       [--max-block-density F] [--write-puz <path>]");
     eprintln!();
-    eprintln!("  --json               emit machine-readable JSON instead of text");
+    eprintln!("  --json                 emit machine-readable JSON instead of text");
     eprintln!(
-        "  --min-word-length N  minimum entry length in letters (default {})",
+        "  --min-word-length N    minimum entry length in letters (default {})",
         DEFAULT_MIN_WORD_LENGTH
     );
-    eprintln!("  --write-puz PATH     also write the grid's block pattern as a .puz file");
+    eprintln!(
+        "  --max-block-density F  maximum fraction of the grid that may be blocked, 0.0 to 1.0 (default {})",
+        DEFAULT_MAX_BLOCK_DENSITY
+    );
+    eprintln!("  --write-puz PATH       also write the grid's block pattern as a .puz file");
     eprintln!();
     eprintln!("grid file format: one line per row, '#' for a blocked square,");
     eprintln!("any other character (conventionally '.') for an open square.");
@@ -194,6 +213,7 @@ fn main() -> ExitCode {
     let mut json = false;
     let mut path: Option<String> = None;
     let mut min_word_length = DEFAULT_MIN_WORD_LENGTH;
+    let mut max_block_density = DEFAULT_MAX_BLOCK_DENSITY;
     let mut write_puz_path: Option<String> = None;
 
     let mut i = 0;
@@ -217,6 +237,26 @@ fn main() -> ExitCode {
                     Ok(n) if n >= 1 => n,
                     _ => {
                         eprintln!("--min-word-length must be a positive integer, got '{}'", value);
+                        return ExitCode::from(2);
+                    }
+                };
+            }
+            "--max-block-density" => {
+                i += 1;
+                let value = match args.get(i) {
+                    Some(v) => v,
+                    None => {
+                        eprintln!("--max-block-density requires a value");
+                        return ExitCode::from(2);
+                    }
+                };
+                max_block_density = match value.parse::<f64>() {
+                    Ok(n) if (0.0..=1.0).contains(&n) => n,
+                    _ => {
+                        eprintln!(
+                            "--max-block-density must be a number between 0.0 and 1.0, got '{}'",
+                            value
+                        );
                         return ExitCode::from(2);
                     }
                 };
@@ -298,7 +338,7 @@ fn main() -> ExitCode {
         }
     }
 
-    let report = build_report(&grid, min_word_length);
+    let report = build_report(&grid, min_word_length, max_block_density);
     if json {
         println!("{}", report.to_json());
     } else {

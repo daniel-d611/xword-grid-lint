@@ -27,12 +27,16 @@ of columns.
 ## Usage
 
 ```
-xword-grid-lint <grid-file> [--json] [--min-word-length N] [--write-puz <path>]
+xword-grid-lint <grid-file> [--json] [--min-word-length N] [--max-block-density F] [--write-puz <path>]
 ```
 
 `--min-word-length` defaults to 3 and controls the minimum entry length
 flagged by the length check below; e.g. `--min-word-length 4` also flags
 three-letter entries.
+
+`--max-block-density` defaults to 0.2 and controls the block density check
+below; it takes a fraction of the grid from 0.0 to 1.0, e.g. `--max-block-density
+0.16` for a stricter cap closer to what a daily newspaper grid allows.
 
 `--write-puz` writes the grid's block pattern out as an Across Lite `.puz`
 file, so a text sketch can be opened directly in a grid editor. This tool
@@ -51,6 +55,7 @@ fully open grid like an NYT Mini):
 ```
 $ xword-grid-lint examples/sample.txt
 grid: 5x5 (25 open, 0 blocked)
+block density: 0.0%
 symmetric: yes
 connected: yes
 checks: all passed
@@ -70,7 +75,7 @@ The same grid with `--json`:
 
 ```
 $ xword-grid-lint examples/sample.txt --json
-{"width":5,"height":5,"open_cells":25,"block_cells":0,"symmetric":true,"connected":true,"errors":[],"entries":[{"number":1,"row":0,"col":0,"across_len":5,"down_len":5},{"number":2,"row":0,"col":1,"across_len":null,"down_len":5},{"number":3,"row":0,"col":2,"across_len":null,"down_len":5},{"number":4,"row":0,"col":3,"across_len":null,"down_len":5},{"number":5,"row":0,"col":4,"across_len":null,"down_len":5},{"number":6,"row":1,"col":0,"across_len":5,"down_len":null},{"number":7,"row":2,"col":0,"across_len":5,"down_len":null},{"number":8,"row":3,"col":0,"across_len":5,"down_len":null},{"number":9,"row":4,"col":0,"across_len":5,"down_len":null}]}
+{"width":5,"height":5,"open_cells":25,"block_cells":0,"block_density":0,"symmetric":true,"connected":true,"errors":[],"entries":[{"number":1,"row":0,"col":0,"across_len":5,"down_len":5},{"number":2,"row":0,"col":1,"across_len":null,"down_len":5},{"number":3,"row":0,"col":2,"across_len":null,"down_len":5},{"number":4,"row":0,"col":3,"across_len":null,"down_len":5},{"number":5,"row":0,"col":4,"across_len":null,"down_len":5},{"number":6,"row":1,"col":0,"across_len":5,"down_len":null},{"number":7,"row":2,"col":0,"across_len":5,"down_len":null},{"number":8,"row":3,"col":0,"across_len":5,"down_len":null},{"number":9,"row":4,"col":0,"across_len":5,"down_len":null}]}
 ```
 
 `examples/invalid.txt` has a block pattern that isn't symmetric and two
@@ -79,7 +84,7 @@ across entries that are only two letters long, so the report includes
 
 ```
 $ xword-grid-lint examples/invalid.txt --json
-{"width":5,"height":5,"open_cells":22,"block_cells":3,"symmetric":false,"connected":true,"errors":["grid is not 180-degree rotationally symmetric (2 mismatched cell pairs)","1-Across is 2 letters (minimum 3)","3-Across is 2 letters (minimum 3)","6-Across is 2 letters (minimum 3)","7-Across is 2 letters (minimum 3)","9-Down is 2 letters (minimum 3)"],"entries":[...]}
+{"width":5,"height":5,"open_cells":22,"block_cells":3,"block_density":0.12,"symmetric":false,"connected":true,"errors":["grid is not 180-degree rotationally symmetric (2 mismatched cell pairs)","1-Across is 2 letters (minimum 3)","3-Across is 2 letters (minimum 3)","6-Across is 2 letters (minimum 3)","7-Across is 2 letters (minimum 3)","9-Down is 2 letters (minimum 3)"],"entries":[...]}
 ```
 
 The process exit code is 0 if the grid has no issues and 1 if it does,
@@ -88,6 +93,8 @@ so it can be used as a check in a build script.
 ## What it checks
 
 - 180-degree rotational symmetry of the block pattern
+- block density doesn't exceed a threshold (configurable with
+  `--max-block-density`, default 20%)
 - every open cell is reachable from every other open cell
 - every open cell belongs to at least one entry (across or down, length 2+)
 - every across/down entry is at least three letters long (configurable
