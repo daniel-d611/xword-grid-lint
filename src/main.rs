@@ -1,8 +1,10 @@
+mod generate;
 mod grid;
 mod puz;
 
 use grid::Grid;
 use std::process::ExitCode;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 const DEFAULT_MIN_WORD_LENGTH: usize = 3;
 const DEFAULT_MAX_BLOCK_DENSITY: f64 = 0.2;
@@ -183,11 +185,31 @@ fn build_report(grid: &Grid, min_word_length: usize, max_block_density: f64) -> 
     }
 }
 
+fn parse_dimensions(s: &str) -> Result<(usize, usize), String> {
+    let sep = s
+        .find(|c| c == 'x' || c == 'X')
+        .ok_or_else(|| format!("value must be WIDTHxHEIGHT, e.g. 15x15, got '{}'", s))?;
+    let (w, h) = (&s[..sep], &s[sep + 1..]);
+    let width = w
+        .parse::<usize>()
+        .map_err(|_| format!("invalid width '{}'", w))?;
+    let height = h
+        .parse::<usize>()
+        .map_err(|_| format!("invalid height '{}'", h))?;
+    if width == 0 || height == 0 {
+        return Err(format!("dimensions must be at least 1x1, got {}x{}", width, height));
+    }
+    Ok((width, height))
+}
+
 fn print_help() {
     eprintln!("xword-grid-lint - check a crossword grid layout and number its entries");
     eprintln!();
     eprintln!("usage: xword-grid-lint <grid-file> [--json] [--min-word-length N]");
     eprintln!("                       [--max-block-density F] [--write-puz <path>]");
+    eprintln!();
+    eprintln!("       xword-grid-lint --generate WIDTHxHEIGHT [output-file] [--seed N]");
+    eprintln!("                       [--json] [--min-word-length N] [--max-block-density F]");
     eprintln!();
     eprintln!("  --json                 emit machine-readable JSON instead of text");
     eprintln!(
@@ -199,6 +221,8 @@ fn print_help() {
         DEFAULT_MAX_BLOCK_DENSITY
     );
     eprintln!("  --write-puz PATH       also write the grid's block pattern as a .puz file");
+    eprintln!("  --generate WxH         generate a grid instead of reading one, e.g. 15x15");
+    eprintln!("  --seed N               seed the generator for a reproducible grid");
     eprintln!();
     eprintln!("grid file format: one line per row, '#' for a blocked square,");
     eprintln!("any other character (conventionally '.') for an open square.");
@@ -206,6 +230,10 @@ fn print_help() {
     eprintln!();
     eprintln!("if <grid-file> ends in .puz, it's read as a binary .puz file instead;");
     eprintln!("only its block pattern is used, any solution letters are ignored.");
+    eprintln!();
+    eprintln!("--generate produces a block pattern satisfying rotational symmetry,");
+    eprintln!("connectivity, and --min-word-length/--max-block-density; it's written to");
+    eprintln!("output-file if given, otherwise printed to stdout before the report.");
 }
 
 fn main() -> ExitCode {
@@ -215,6 +243,8 @@ fn main() -> ExitCode {
     let mut min_word_length = DEFAULT_MIN_WORD_LENGTH;
     let mut max_block_density = DEFAULT_MAX_BLOCK_DENSITY;
     let mut write_puz_path: Option<String> = None;
+    let mut generate_dims: Option<(usize, usize)> = None;
+    let mut seed: Option<u64> = None;
 
     let mut i = 0;
     while i < args.len() {
@@ -272,6 +302,40 @@ fn main() -> ExitCode {
                 };
                 write_puz_path = Some(value.to_string());
             }
+            "--generate" => {
+                i += 1;
+                let value = match args.get(i) {
+                    Some(v) => v,
+                    None => {
+                        eprintln!("--generate requires a WIDTHxHEIGHT value, e.g. 15x15");
+                        return ExitCode::from(2);
+                    }
+                };
+                generate_dims = match parse_dimensions(value) {
+                    Ok(d) => Some(d),
+                    Err(e) => {
+                        eprintln!("--generate {}", e);
+                        return ExitCode::from(2);
+                    }
+                };
+            }
+            "--seed" => {
+                i += 1;
+                let value = match args.get(i) {
+                    Some(v) => v,
+                    None => {
+                        eprintln!("--seed requires a value");
+                        return ExitCode::from(2);
+                    }
+                };
+                seed = match value.parse::<u64>() {
+                    Ok(n) => Some(n),
+                    _ => {
+                        eprintln!("--seed must be a non-negative integer, got '{}'", value);
+                        return ExitCode::from(2);
+                    }
+                };
+            }
             other => {
                 if path.is_some() {
                     eprintln!("unexpected argument: {}", other);
@@ -283,42 +347,76 @@ fn main() -> ExitCode {
         i += 1;
     }
 
-    let path = match path {
-        Some(p) => p,
-        None => {
-            print_help();
-            return ExitCode::from(2);
-        }
-    };
+    let grid = if let Some((width, height)) = generate_dims {
+        let seed = seed.unwrap_or_else(|| {
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .map(|d| d.as_nanos() as u64)
+                .unwrap_or(0x2545_F491_4F6C_DD1D)
+        });
+        let opts = generate::GenerateOptions {
+            width,
+            height,
+            max_block_density,
+            min_word_length,
+            seed,
+        };
+        let grid = match generate::generate(&opts) {
+            Ok(g) => g,
+            Err(e) => {
+                eprintln!("error generating grid: {}", e);
+                return ExitCode::FAILURE;
+            }
+        };
 
-    let grid = if path.to_lowercase().ends_with(".puz") {
-        let bytes = match std::fs::read(&path) {
-            Ok(b) => b,
-            Err(e) => {
-                eprintln!("error reading {}: {}", path, e);
-                return ExitCode::FAILURE;
+        match &path {
+            Some(out_path) => {
+                if let Err(e) = std::fs::write(out_path, grid.to_sketch()) {
+                    eprintln!("error writing {}: {}", out_path, e);
+                    return ExitCode::FAILURE;
+                }
             }
-        };
-        match puz::read(&bytes) {
-            Ok(g) => g,
-            Err(e) => {
-                eprintln!("error parsing puz file: {}", e);
-                return ExitCode::FAILURE;
-            }
+            None => print!("{}", grid.to_sketch()),
         }
+        grid
     } else {
-        let input = match std::fs::read_to_string(&path) {
-            Ok(s) => s,
-            Err(e) => {
-                eprintln!("error reading {}: {}", path, e);
-                return ExitCode::FAILURE;
+        let path = match path {
+            Some(p) => p,
+            None => {
+                print_help();
+                return ExitCode::from(2);
             }
         };
-        match Grid::parse(&input) {
-            Ok(g) => g,
-            Err(e) => {
-                eprintln!("error parsing grid: {}", e);
-                return ExitCode::FAILURE;
+
+        if path.to_lowercase().ends_with(".puz") {
+            let bytes = match std::fs::read(&path) {
+                Ok(b) => b,
+                Err(e) => {
+                    eprintln!("error reading {}: {}", path, e);
+                    return ExitCode::FAILURE;
+                }
+            };
+            match puz::read(&bytes) {
+                Ok(g) => g,
+                Err(e) => {
+                    eprintln!("error parsing puz file: {}", e);
+                    return ExitCode::FAILURE;
+                }
+            }
+        } else {
+            let input = match std::fs::read_to_string(&path) {
+                Ok(s) => s,
+                Err(e) => {
+                    eprintln!("error reading {}: {}", path, e);
+                    return ExitCode::FAILURE;
+                }
+            };
+            match Grid::parse(&input) {
+                Ok(g) => g,
+                Err(e) => {
+                    eprintln!("error parsing grid: {}", e);
+                    return ExitCode::FAILURE;
+                }
             }
         }
     };
@@ -349,5 +447,33 @@ fn main() -> ExitCode {
         ExitCode::SUCCESS
     } else {
         ExitCode::FAILURE
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_dimensions_accepts_lowercase_and_uppercase_x() {
+        assert_eq!(parse_dimensions("15x15"), Ok((15, 15)));
+        assert_eq!(parse_dimensions("21X5"), Ok((21, 5)));
+    }
+
+    #[test]
+    fn parse_dimensions_rejects_missing_separator() {
+        assert!(parse_dimensions("1515").is_err());
+    }
+
+    #[test]
+    fn parse_dimensions_rejects_non_numeric_parts() {
+        assert!(parse_dimensions("axb").is_err());
+        assert!(parse_dimensions("5xb").is_err());
+    }
+
+    #[test]
+    fn parse_dimensions_rejects_zero() {
+        assert!(parse_dimensions("0x5").is_err());
+        assert!(parse_dimensions("5x0").is_err());
     }
 }

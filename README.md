@@ -90,6 +90,28 @@ $ xword-grid-lint examples/invalid.txt --json
 The process exit code is 0 if the grid has no issues and 1 if it does,
 so it can be used as a check in a build script.
 
+## Generating a grid
+
+```
+xword-grid-lint --generate WIDTHxHEIGHT [output-file] [--seed N] [--json]
+                 [--min-word-length N] [--max-block-density F]
+```
+
+`--generate 15x15` picks a 180-degree rotationally symmetric block pattern
+at random and keeps trying until it finds one that already passes the
+checks above: connected, no isolated cells, every entry at least
+`--min-word-length` long, block density within `--max-block-density`. If
+it can't find one after several thousand tries - too-strict a minimum word
+length on too small a grid, usually - it says so instead of handing back
+something broken.
+
+The sketch is written to `output-file` if given, otherwise printed to
+stdout, followed by the usual report showing it passing. `--seed` makes
+the result reproducible; without it, the seed comes from the system clock.
+
+Only rotational symmetry is supported, since that's the only kind the
+checks above know how to verify.
+
 ## What it checks
 
 - 180-degree rotational symmetry of the block pattern
@@ -102,9 +124,10 @@ so it can be used as a check in a build script.
 
 ## What it doesn't do yet
 
-No letter fill, no word list, no grid generation. `.puz` support is
-structural only: block pattern in and out, never solution letters or real
-clues. See the issue tracker for what's planned.
+No letter fill, no word list. `.puz` support is structural only: block
+pattern in and out, never solution letters or real clues. Grid generation
+only produces rotationally symmetric patterns. See the issue tracker for
+what's planned.
 
 ## Building
 

@@ -46,8 +46,28 @@ impl Grid {
         })
     }
 
+    // Builds a grid directly from a block pattern, bypassing the text
+    // parser. Used by the generator, which produces the pattern itself
+    // rather than reading it from a sketch.
+    pub fn from_blocked(width: usize, height: usize, blocked: Vec<Vec<bool>>) -> Self {
+        Grid { width, height, blocked }
+    }
+
     pub fn is_blocked(&self, r: usize, c: usize) -> bool {
         self.blocked[r][c]
+    }
+
+    // The inverse of `parse`: a text sketch that reads back to an
+    // equivalent grid.
+    pub fn to_sketch(&self) -> String {
+        let mut s = String::with_capacity((self.width + 1) * self.height);
+        for row in &self.blocked {
+            for &b in row {
+                s.push(if b { '#' } else { '.' });
+            }
+            s.push('\n');
+        }
+        s
     }
 
     pub fn open_cells(&self) -> usize {
@@ -370,5 +390,21 @@ mod tests {
     fn block_density_counts_fraction_of_blocked_cells() {
         let grid = Grid::parse("#.\n..").unwrap();
         assert_eq!(grid.block_density(), 0.25);
+    }
+
+    #[test]
+    fn to_sketch_round_trips_through_parse() {
+        let original = "..#..\n.....\n#...#\n.....\n..#..";
+        let grid = Grid::parse(original).unwrap();
+        let round_tripped = Grid::parse(&grid.to_sketch()).unwrap();
+        assert_eq!(grid.entries(), round_tripped.entries());
+        assert_eq!(grid.to_sketch(), round_tripped.to_sketch());
+    }
+
+    #[test]
+    fn from_blocked_matches_equivalent_parsed_grid() {
+        let parsed = Grid::parse("#.\n..").unwrap();
+        let built = Grid::from_blocked(2, 2, vec![vec![true, false], vec![false, false]]);
+        assert_eq!(parsed.to_sketch(), built.to_sketch());
     }
 }
