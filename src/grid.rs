@@ -236,6 +236,38 @@ impl Grid {
         }
         out
     }
+
+    // Open cells that belong to exactly one of an across/down entry, not
+    // both. A solver only has one clue to cross-check that letter against,
+    // so constructors track this separately from block density: two grids
+    // with the same block count can differ a lot in how checked they feel.
+    // Isolated cells (neither direction) aren't counted here since they're
+    // already flagged by `isolated_cells`.
+    pub fn unchecked_cells(&self) -> Vec<(usize, usize)> {
+        let across = self.across_run_lengths();
+        let down = self.down_run_lengths();
+        let mut out = Vec::new();
+        for r in 0..self.height {
+            for c in 0..self.width {
+                if self.blocked[r][c] {
+                    continue;
+                }
+                if (across[r][c] >= 2) != (down[r][c] >= 2) {
+                    out.push((r, c));
+                }
+            }
+        }
+        out
+    }
+
+    // Fraction of open cells that are unchecked, 0.0 to 1.0.
+    pub fn unchecked_density(&self) -> f64 {
+        let open = self.open_cells();
+        if open == 0 {
+            return 0.0;
+        }
+        self.unchecked_cells().len() as f64 / open as f64
+    }
 }
 
 #[cfg(test)]
@@ -406,5 +438,34 @@ mod tests {
         let parsed = Grid::parse("#.\n..").unwrap();
         let built = Grid::from_blocked(2, 2, vec![vec![true, false], vec![false, false]]);
         assert_eq!(parsed.to_sketch(), built.to_sketch());
+    }
+
+    #[test]
+    fn unchecked_cells_fully_open_grid_has_none() {
+        let grid = Grid::parse(".....\n.....\n.....\n.....\n.....").unwrap();
+        assert!(grid.unchecked_cells().is_empty());
+        assert_eq!(grid.unchecked_density(), 0.0);
+    }
+
+    // In this 2x3 grid, (1,1) is the only cell checked in both directions;
+    // the other three open cells each have a run of 1 in one direction.
+    #[test]
+    fn unchecked_cell_checked_in_only_one_direction() {
+        let grid = Grid::parse("#.#\n...").unwrap();
+        assert_eq!(grid.unchecked_cells(), vec![(0, 1), (1, 0), (1, 2)]);
+    }
+
+    // A boxed-in single cell is isolated (checked in neither direction),
+    // which is a separate condition from being unchecked in one direction.
+    #[test]
+    fn unchecked_cells_excludes_isolated_cells() {
+        let grid = Grid::parse("###\n#.#\n###").unwrap();
+        assert!(grid.unchecked_cells().is_empty());
+    }
+
+    #[test]
+    fn unchecked_density_counts_fraction_of_open_cells() {
+        let grid = Grid::parse("#.#\n...").unwrap();
+        assert_eq!(grid.unchecked_density(), 0.75);
     }
 }

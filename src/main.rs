@@ -15,6 +15,8 @@ struct Report {
     open_cells: usize,
     block_cells: usize,
     block_density: f64,
+    unchecked_cells: usize,
+    unchecked_density: f64,
     symmetric: bool,
     connected: bool,
     entries: Vec<grid::Entry>,
@@ -29,6 +31,12 @@ impl Report {
             self.width, self.height, self.open_cells, self.block_cells
         ));
         s.push_str(&format!("block density: {:.1}%\n", self.block_density * 100.0));
+        s.push_str(&format!(
+            "unchecked squares: {:.1}% ({} of {})\n",
+            self.unchecked_density * 100.0,
+            self.unchecked_cells,
+            self.open_cells
+        ));
         s.push_str(&format!("symmetric: {}\n", if self.symmetric { "yes" } else { "no" }));
         s.push_str(&format!("connected: {}\n", if self.connected { "yes" } else { "no" }));
 
@@ -82,12 +90,14 @@ impl Report {
             .collect();
 
         format!(
-            "{{\"width\":{},\"height\":{},\"open_cells\":{},\"block_cells\":{},\"block_density\":{},\"symmetric\":{},\"connected\":{},\"errors\":[{}],\"entries\":[{}]}}",
+            "{{\"width\":{},\"height\":{},\"open_cells\":{},\"block_cells\":{},\"block_density\":{},\"unchecked_cells\":{},\"unchecked_density\":{},\"symmetric\":{},\"connected\":{},\"errors\":[{}],\"entries\":[{}]}}",
             self.width,
             self.height,
             self.open_cells,
             self.block_cells,
             self.block_density,
+            self.unchecked_cells,
+            self.unchecked_density,
             self.symmetric,
             self.connected,
             errors_json.join(","),
@@ -178,6 +188,8 @@ fn build_report(grid: &Grid, min_word_length: usize, max_block_density: f64) -> 
         open_cells: grid.open_cells(),
         block_cells: grid.block_cells(),
         block_density,
+        unchecked_cells: grid.unchecked_cells().len(),
+        unchecked_density: grid.unchecked_density(),
         symmetric: mismatches == 0,
         connected,
         entries,
